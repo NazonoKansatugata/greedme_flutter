@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'ui/game.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -27,6 +34,47 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  String? userId;
+
+  Future<void> _showUserIdDialog() async {
+    String tempId = '';
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('ユーザーID入力'),
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'ユーザーIDを入力してください'),
+          onChanged: (value) => tempId = value,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (tempId.isNotEmpty) {
+                setState(() {
+                  userId = tempId;
+                });
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startGame() async {
+    await _showUserIdDialog();
+    if (userId != null && userId!.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => GamePage(userId: userId!)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,12 +85,7 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Center(
         child: ElevatedButton(
           child: const Text('ゲーム開始'),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const GamePage()),
-            );
-          },
+          onPressed: _startGame,
         ),
       ),
     );

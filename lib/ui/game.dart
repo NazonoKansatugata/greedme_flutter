@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/player.dart';
 import '../models/bullet.dart';
 import '../models/obstacle.dart';
 
 class GamePage extends StatefulWidget {
-  const GamePage({Key? key}) : super(key: key);
+  final String userId;
+  const GamePage({Key? key, required this.userId}) : super(key: key);
 
   @override
   State<GamePage> createState() => _GamePageState();
@@ -134,10 +136,22 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
-  void _endGame() {
+  void _endGame() async {
     isGameOver = true;
     timer?.cancel();
     gameTimer?.cancel();
+
+    // Firestoreにスコア保存
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .set({
+      'score_typeA': scores[ObstacleType.typeA],
+      'score_typeB': scores[ObstacleType.typeB],
+      'score_typeC': scores[ObstacleType.typeC],
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
     showDialog(
       context: context,
       barrierDismissible: false,
