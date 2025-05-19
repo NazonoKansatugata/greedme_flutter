@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'ui/game.dart';
+import 'dart:math';
+import 'ui/shooting_game.dart';
+import 'ui/whack_a_mole.dart';
+import 'ui/flappy_collect.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
@@ -68,9 +71,40 @@ class _MyHomePageState extends State<MyHomePage> {
   void _startGame() async {
     await _showUserIdDialog();
     if (userId != null && userId!.isNotEmpty) {
+      // FirestoreでユーザーIDの存在確認
+      final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      if (!doc.exists) {
+        // エラーダイアログ表示
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('エラー'),
+              content: const Text('入力されたユーザーIDは存在しません。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+      final rand = Random();
+      final gameType = rand.nextInt(3);
+      Widget gameWidget;
+      if (gameType == 0) {
+        gameWidget = ShootingGamePage(userId: userId!);
+      } else if (gameType == 1) {
+        gameWidget = WhackAMolePage(userId: userId!);
+      } else {
+        gameWidget = FlappyCollectPage(userId: userId!);
+      }
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => GamePage(userId: userId!)),
+        MaterialPageRoute(builder: (context) => gameWidget),
       );
     }
   }
