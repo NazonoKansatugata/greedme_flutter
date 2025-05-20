@@ -57,49 +57,95 @@ class _MyHomePageState extends State<MyHomePage> {
   Stream<QuerySnapshot<Map<String, dynamic>>> get _usersStream =>
       FirebaseFirestore.instance.collection('users').snapshots();
 
+  Future<void> _showHowToPlayDialog(BuildContext context, String title, String description, VoidCallback onOk) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(description),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    onOk();
+  }
+
   void _startGame(String userId) async {
     final rand = Random();
     final gameType = rand.nextInt(4); // 0:shooting, 1:whack, 2:flappy, 3:tetris
     Widget gameWidget;
+    String howToTitle = '';
+    String howToDesc = '';
     if (gameType == 0) {
       gameWidget = ShootingGamePage(userId: userId);
+      howToTitle = 'シューティングゲームの遊び方';
+      howToDesc = '左右ボタンまたは←→キーで移動し、中央のボタンまたはスペースキーで弾を連射して障害物を撃ちましょう。\n30秒間でたくさん撃ち落とそう！';
     } else if (gameType == 1) {
       gameWidget = WhackAMolePage(userId: userId);
+      howToTitle = 'もぐらたたきの遊び方';
+      howToDesc = '3種類のもぐらが出てきます。タップして素早くたたきましょう。\n30秒間でたくさん叩いてスコアを稼ごう！';
     } else if (gameType == 2) {
       gameWidget = FlappyCollectPage(userId: userId);
+      howToTitle = 'フラッピーバード風ゲームの遊び方';
+      howToDesc = '画面タップまたはジャンプボタンで上昇します。\n3種類のオブジェクトを取ってスコアを稼ごう！30秒間の勝負です。';
     } else {
       gameWidget = const TetrisGamePage();
+      howToTitle = 'テトリス風ゲームの遊び方';
+      howToDesc = 'ブロックを左右移動・回転・落下させて横一列を揃えましょう。\n操作: ←→で移動、回転ボタン、↓でソフトドロップ、⏬でハードドロップ。';
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => gameWidget),
-    );
+    await _showHowToPlayDialog(context, howToTitle, howToDesc, () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => Center(
+            child: SizedBox(
+              width: 600, // パソコン向けに幅を広げる
+              height: 900, // パソコン向けに高さを広げる
+              child: gameWidget,
+            ),
+          ),
+        ),
+      );
+    });
   }
 
   Future<void> _onUserTap(DocumentSnapshot<Map<String, dynamic>> doc) async {
-    final fruit = doc.data()?['fruit'] ?? '';
-    final fruits = ['りんご', 'みかん', 'バナナ', 'ぶどう', 'もも'];
-    String? selectedFruit = await showDialog<String>(
+    final password = doc.data()?['password'] ?? '';
+    String? inputPassword = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('このユーザーのフルーツは？'),
-        children: fruits
-            .map((f) => SimpleDialogOption(
-                  child: Text(f),
-                  onPressed: () => Navigator.pop(context, f),
-                ))
-            .toList(),
-      ),
+      builder: (context) {
+        String temp = '';
+        return AlertDialog(
+          title: const Text('合言葉を入力してください'),
+          content: TextField(
+            autofocus: true,
+            obscureText: false, // ここをfalseに
+            decoration: const InputDecoration(hintText: '合言葉'),
+            onChanged: (value) => temp = value,
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, temp),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
-    if (selectedFruit == null) return;
-    if (selectedFruit == fruit) {
+    if (inputPassword == null) return;
+    if (inputPassword == password) {
       _startGame(doc.id);
     } else {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('はずれ'),
-          content: const Text('フルーツが一致しませんでした。'),
+          title: const Text('エラー'),
+          content: const Text('合言葉が一致しませんでした。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

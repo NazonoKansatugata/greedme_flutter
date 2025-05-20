@@ -110,8 +110,8 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
   Timer? rightMoveTimer;
   Timer? shootTimer;
   Random rand = Random();
-  double screenWidth = 300;
-  double screenHeight = 600;
+  double screenWidth = 600; // 固定サイズ
+  double screenHeight = 900; // 固定サイズ
   int timeLeft = 30;
   bool isGameOver = false;
 
@@ -148,6 +148,34 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
     super.dispose();
   }
 
+  void _movePlayer(double dx) {
+    if (isGameOver) return;
+    setState(() {
+      player.x += dx;
+      // 画面外に出ないように制限（右端も正しく止まるよう修正）
+      double maxX = screenWidth - 30;
+      if (player.x < 0) {
+        player.x = 0;
+      } else if (player.x > maxX) {
+        player.x = maxX;
+      }
+    });
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (isGameOver) return;
+    setState(() {
+      player.x += details.delta.dx;
+      // 画面外に出ないように制限（右端も正しく止まるよう修正）
+      double maxX = screenWidth - 30;
+      if (player.x < 0) {
+        player.x = 0;
+      } else if (player.x > maxX) {
+        player.x = maxX;
+      }
+    });
+  }
+
   void _update(Timer timer) {
     if (isGameOver) return;
     setState(() {
@@ -172,6 +200,7 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
       bullets.removeWhere((b) => removeBullets.contains(b));
       obstacles.removeWhere((o) => removeObstacles.contains(o));
 
+      // 障害物の頻度を減らす（例: 60フレームごとに1つ生成）
       if (timer.tick % 60 == 0) {
         obstacles.add(_randomObstacle());
       }
@@ -189,36 +218,15 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
 
   Obstacle _randomObstacle() {
     int type = rand.nextInt(3);
-    double x = rand.nextDouble() * (screenWidth - 40);
-    switch (type) {
-      case 0:
-        return Obstacle(x: x, y: 0, type: ObstacleType.typeA);
-      case 1:
-        return Obstacle(x: x, y: 0, type: ObstacleType.typeB);
-      default:
-        return Obstacle(x: x, y: 0, type: ObstacleType.typeC);
-    }
-  }
-
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    if (isGameOver) return;
-    setState(() {
-      player.x += details.delta.dx;
-      player.x = player.x.clamp(0, screenWidth - 30);
-    });
+    // 画面内のみで生成
+    double maxWidth = screenWidth - 40;
+    double x = rand.nextDouble() * maxWidth;
+    return Obstacle(x: x, y: 0, type: ObstacleType.values[type]);
   }
 
   void _onTapDown(TapDownDetails details) {
     if (isGameOver) return;
     bullets.add(player.shoot());
-  }
-
-  void _movePlayer(double dx) {
-    if (isGameOver) return;
-    setState(() {
-      player.x += dx;
-      player.x = player.x.clamp(0, screenWidth - 30);
-    });
   }
 
   void _endGame() async {
@@ -233,7 +241,6 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
       'score_typeA': scores[ObstacleType.typeA],
       'score_typeB': scores[ObstacleType.typeB],
       'score_typeC': scores[ObstacleType.typeC],
-      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     showDialog(
@@ -295,7 +302,7 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
     if (_isShooting) return;
     _isShooting = true;
     shootTimer?.cancel();
-    shootTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+    shootTimer = Timer.periodic(const Duration(milliseconds: 300), (_) { // 連射頻度を下げる
       if (!isGameOver && _isShooting) {
         setState(() {
           bullets.add(player.shoot());
@@ -311,135 +318,144 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final size = MediaQuery.of(context).size;
-      screenWidth = size.width;
-      screenHeight = size.height;
-      if (!focusNode.hasFocus) {
-        focusNode.requestFocus();
-      }
-    });
+    // 必ず固定サイズで描画
+    screenWidth = 600;
+    screenHeight = 900;
+    if (!focusNode.hasFocus) {
+      // build内でrequestFocusは1回だけ
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!focusNode.hasFocus) {
+          focusNode.requestFocus();
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: RawKeyboardListener(
-        focusNode: focusNode,
-        autofocus: true,
-        onKey: (event) {
-          // キー押下時
-          if (event is RawKeyDownEvent && !event.repeat) {
-            if (event.isKeyPressed(LogicalKeyboardKey.arrowLeft)) {
-              _startMoveLeft();
-            }
-            if (event.isKeyPressed(LogicalKeyboardKey.arrowRight)) {
-              _startMoveRight();
-            }
-            if (event.isKeyPressed(LogicalKeyboardKey.space)) {
-              _startShooting();
-            }
-          }
-          // キー離し時
-          if (event is RawKeyUpEvent) {
-            if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-              _stopMoveLeft();
-            }
-            if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-              _stopMoveRight();
-            }
-            if (event.logicalKey == LogicalKeyboardKey.space) {
-              _stopShooting();
-            }
-          }
-        },
-        child: GestureDetector(
-          onHorizontalDragUpdate: _onHorizontalDragUpdate,
-          onTapDown: _onTapDown,
-          child: Stack(
-            children: [
-              // タイマー表示
-              Positioned(
-                top: 20,
-                left: 20,
-                child: Text(
-                  '残り: $timeLeft 秒',
-                  style: const TextStyle(color: Colors.white, fontSize: 20),
-                ),
-              ),
-              // プレイヤー
-              Positioned(
-                left: player.x,
-                top: player.y,
-                child: Container(width: 30, height: 30, color: Colors.blue),
-              ),
-              // 弾
-              ...bullets.map((b) => Positioned(
-                left: b.x + 12,
-                top: b.y,
-                child: Container(width: 6, height: 12, color: Colors.white),
-              )),
-              // 障害物
-              ...obstacles.map((o) => Positioned(
-                left: o.x,
-                top: o.y,
-                child: o.getWidget(),
-              )),
-              // 操作ボタン
-              if (!isGameOver)
-                Positioned(
-                  bottom: 30,
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTapDown: (_) => _startMoveLeft(),
-                        onTapUp: (_) => _stopMoveLeft(),
-                        onTapCancel: _stopMoveLeft,
-                        child: ElevatedButton(
-                          onPressed: null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueGrey,
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(18),
-                          ),
-                          child: const Icon(Icons.arrow_left, size: 32),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      GestureDetector(
-                        onTapDown: (_) => _startShooting(),
-                        onTapUp: (_) => _stopShooting(),
-                        onTapCancel: _stopShooting,
-                        child: ElevatedButton(
-                          onPressed: null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(18),
-                          ),
-                          child: const Icon(Icons.circle, size: 28),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      GestureDetector(
-                        onTapDown: (_) => _startMoveRight(),
-                        onTapUp: (_) => _stopMoveRight(),
-                        onTapCancel: _stopMoveRight,
-                        child: ElevatedButton(
-                          onPressed: null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueGrey,
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(18),
-                          ),
-                          child: const Icon(Icons.arrow_right, size: 32),
-                        ),
-                      ),
-                    ],
+      body: Center(
+        child: SizedBox(
+          width: screenWidth,
+          height: screenHeight,
+          child: RawKeyboardListener(
+            focusNode: focusNode,
+            autofocus: true,
+            onKey: (event) {
+              // キー押下時
+              if (event is RawKeyDownEvent && !event.repeat) {
+                if (event.isKeyPressed(LogicalKeyboardKey.arrowLeft)) {
+                  _startMoveLeft();
+                }
+                if (event.isKeyPressed(LogicalKeyboardKey.arrowRight)) {
+                  _startMoveRight();
+                }
+                if (event.isKeyPressed(LogicalKeyboardKey.space)) {
+                  _startShooting();
+                }
+              }
+              // キー離し時
+              if (event is RawKeyUpEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                  _stopMoveLeft();
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                  _stopMoveRight();
+                }
+                if (event.logicalKey == LogicalKeyboardKey.space) {
+                  _stopShooting();
+                }
+              }
+            },
+            child: GestureDetector(
+              onHorizontalDragUpdate: _onHorizontalDragUpdate,
+              onTapDown: _onTapDown,
+              child: Stack(
+                children: [
+                  // タイマー表示
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    child: Text(
+                      '残り: $timeLeft 秒',
+                      style: const TextStyle(color: Colors.white, fontSize: 20),
+                    ),
                   ),
-                ),
-            ],
+                  // プレイヤー
+                  Positioned(
+                    left: player.x,
+                    top: player.y,
+                    child: Container(width: 30, height: 30, color: Colors.blue),
+                  ),
+                  // 弾
+                  ...bullets.map((b) => Positioned(
+                    left: b.x + 12,
+                    top: b.y,
+                    child: Container(width: 6, height: 12, color: Colors.white),
+                  )),
+                  // 障害物
+                  ...obstacles.map((o) => Positioned(
+                    left: o.x,
+                    top: o.y,
+                    child: o.getWidget(),
+                  )),
+                  // 操作ボタン
+                  if (!isGameOver)
+                    Positioned(
+                      bottom: 30,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          GestureDetector(
+                            onTapDown: (_) => _startMoveLeft(),
+                            onTapUp: (_) => _stopMoveLeft(),
+                            onTapCancel: _stopMoveLeft,
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueGrey,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: const Icon(Icons.arrow_left, size: 32),
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTapDown: (_) => _startShooting(),
+                            onTapUp: (_) => _stopShooting(),
+                            onTapCancel: _stopShooting,
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: const Icon(Icons.circle, size: 28),
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTapDown: (_) => _startMoveRight(),
+                            onTapUp: (_) => _stopMoveRight(),
+                            onTapCancel: _stopMoveRight,
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueGrey,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: const Icon(Icons.arrow_right, size: 32),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
