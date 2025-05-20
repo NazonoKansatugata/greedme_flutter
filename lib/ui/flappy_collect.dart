@@ -45,7 +45,7 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
   void initState() {
     super.initState();
     gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) => _update());
-    objectTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) => _spawnObject());
+    objectTimer = Timer.periodic(const Duration(milliseconds: 400), (_) => _spawnObject()); // 頻度UP
     Timer.periodic(const Duration(seconds: 1), (t) {
       if (mounted && !isGameOver) {
         setState(() {
