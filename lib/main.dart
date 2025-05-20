@@ -77,29 +77,38 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _onUserTap(DocumentSnapshot<Map<String, dynamic>> doc) async {
-    final fruit = doc.data()?['fruit'] ?? '';
-    final fruits = ['りんご', 'みかん', 'バナナ', 'ぶどう', 'もも'];
-    String? selectedFruit = await showDialog<String>(
+    final password = doc.data()?['password'] ?? '';
+    String? inputPassword = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('このユーザーのフルーツは？'),
-        children: fruits
-            .map((f) => SimpleDialogOption(
-                  child: Text(f),
-                  onPressed: () => Navigator.pop(context, f),
-                ))
-            .toList(),
-      ),
+      builder: (context) {
+        String temp = '';
+        return AlertDialog(
+          title: const Text('合言葉を入力してください'),
+          content: TextField(
+            autofocus: true,
+            obscureText: false, // ここをfalseに
+            decoration: const InputDecoration(hintText: '合言葉'),
+            onChanged: (value) => temp = value,
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, temp),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
     );
-    if (selectedFruit == null) return;
-    if (selectedFruit == fruit) {
+    if (inputPassword == null) return;
+    if (inputPassword == password) {
       _startGame(doc.id);
     } else {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('はずれ'),
-          content: const Text('フルーツが一致しませんでした。'),
+          title: const Text('エラー'),
+          content: const Text('合言葉が一致しませんでした。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

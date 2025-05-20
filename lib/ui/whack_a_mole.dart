@@ -95,7 +95,6 @@ class _WhackAMolePageState extends State<WhackAMolePage> {
       'score_typeA': scores[MoleType.typeA],
       'score_typeB': scores[MoleType.typeB],
       'score_typeC': scores[MoleType.typeC],
-      'wam_updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     showDialog(

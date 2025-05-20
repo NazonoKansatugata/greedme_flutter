@@ -233,7 +233,6 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
       'score_typeA': scores[ObstacleType.typeA],
       'score_typeB': scores[ObstacleType.typeB],
       'score_typeC': scores[ObstacleType.typeC],
-      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     showDialog(

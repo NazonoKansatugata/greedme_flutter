@@ -136,10 +136,9 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
         .collection('users')
         .doc(widget.userId)
         .set({
-      'core_typeA': scores[CollectType.typeA],
+      'score_typeA': scores[CollectType.typeA],
       'score_typeB': scores[CollectType.typeB],
       'score_typeC': scores[CollectType.typeC],
-      'flappy_updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     showDialog(
