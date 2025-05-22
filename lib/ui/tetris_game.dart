@@ -3,8 +3,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-const int rowCount = 20;
+const int rowCount = 15;
 const int colCount = 10;
 const Duration tick = Duration(milliseconds: 400);
 
@@ -146,7 +147,8 @@ class Block {
 }
 
 class TetrisGamePage extends StatefulWidget {
-  const TetrisGamePage({Key? key}) : super(key: key);
+  final String userId;
+  const TetrisGamePage({Key? key, required this.userId}) : super(key: key);
 
   @override
   State<TetrisGamePage> createState() => _TetrisGamePageState();
@@ -163,6 +165,14 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
 
   // WebSocket関連
   WebSocketChannel? _channel;
+
+  BlockType? holdBlockType; // ホールド中のテトリミノ
+  bool holdUsed = false;    // このターンでホールドしたか
+
+  // スコア分類
+  int scoreA = 0;
+  int scoreB = 0;
+  int scoreC = 0;
 
   @override
   void initState() {
@@ -183,12 +193,14 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
             _move(-1);
           } else if (input == 'right') {
             _move(1);
-          } else if (input == 'rotate') {
+          } else if (input == 'A') {
             _rotate();
-          } else if (input == 'soft_drop') {
+          } else if (input == 'down') {
             _tick();
-          } else if (input == 'hard_drop') {
+          } else if (input == 'up') {
             _drop();
+          } else if (input == 'B') {
+            _hold();
           }
         }
       } catch (e) {
@@ -204,6 +216,12 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     score = 0;
     isGameOver = false;
     nextBlockType = _randomBlockType();
+    holdBlockType = null;
+    holdUsed = false;
+    // スコア初期化
+    scoreA = 0;
+    scoreB = 0;
+    scoreC = 0;
     _spawnBlock();
     timer = Timer.periodic(tick, (_) => _tick());
   }
@@ -216,10 +234,9 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     final type = nextBlockType ?? _randomBlockType();
     nextBlockType = _randomBlockType();
     currentBlock = Block(type, 0, (colCount ~/ 2) - 2, 0);
+    holdUsed = false; // 新しいブロックが出たらホールド可能に
     if (_isCollision(currentBlock!)) {
-      isGameOver = true;
-      timer?.cancel();
-      setState(() {});
+      _endGame();
     }
   }
 
@@ -255,18 +272,31 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
   }
 
   void _clearLines() {
-    int cleared = 0;
-    field.removeWhere((row) {
-      if (row.every((cell) => cell != null)) {
-        cleared++;
-        return true;
+    // ラインごとに消えるミノの種類をカウントしてスコア分類
+    List<int> linesToClear = [];
+    for (int y = 0; y < field.length; y++) {
+      if (field[y].every((cell) => cell != null)) {
+        linesToClear.add(y);
       }
-      return false;
-    });
+    }
+    for (final y in linesToClear) {
+      for (final cell in field[y]) {
+        if (cell == null) continue;
+        if (cell == BlockType.O || cell == BlockType.I) {
+          scoreA += 1;
+        } else if (cell == BlockType.J || cell == BlockType.L || cell == BlockType.T) {
+          scoreB += 1;
+        } else if (cell == BlockType.S || cell == BlockType.Z) {
+          scoreC += 1;
+        }
+      }
+    }
+    // ライン削除
+    field.removeWhere((row) => row.every((cell) => cell != null));
     while (field.length < rowCount) {
       field.insert(0, List.filled(colCount, null));
     }
-    score += cleared * 100;
+    // 合計スコアはscoreA + scoreB + scoreC
   }
 
   void _tick() {
@@ -314,6 +344,44 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
       currentBlock = dropped;
     });
     _fixBlock();
+  }
+
+  void _hold() {
+    if (isGameOver || currentBlock == null || holdUsed) return;
+    setState(() {
+      final currentType = currentBlock!.type;
+      if (holdBlockType == null) {
+        holdBlockType = currentType;
+        _spawnBlock();
+      } else {
+        // 現在のブロックとホールドブロックを交換
+        final tmp = holdBlockType;
+        holdBlockType = currentType;
+        currentBlock = Block(tmp!, 0, (colCount ~/ 2) - 2, 0);
+        if (_isCollision(currentBlock!)) {
+          _endGame();
+        }
+      }
+      holdUsed = true;
+    });
+  }
+
+  Future<void> _saveScoreToFirestore() async {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .set({
+      'scoreA': scoreA,
+      'scoreB': scoreB,
+      'scoreC': scoreC,
+    }, SetOptions(merge: true));
+  }
+
+  void _endGame() async {
+    isGameOver = true;
+    timer?.cancel();
+    await _saveScoreToFirestore();
+    setState(() {});
   }
 
   @override
@@ -398,6 +466,30 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     );
   }
 
+  Widget _buildHoldBlock() {
+    if (holdBlockType == null) return const SizedBox.shrink();
+    final shape = blockShapes[holdBlockType]![0];
+    return Column(
+      children: shape.map((row) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: row.map((cell) {
+            return Container(
+              width: 16,
+              height: 16,
+              margin: const EdgeInsets.all(1),
+              decoration: BoxDecoration(
+                color: cell == 1 ? blockColors[holdBlockType] : Colors.transparent,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: Colors.black12),
+              ),
+            );
+          }).toList(),
+        );
+      }).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -414,11 +506,27 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
             children: [
               Column(
                 children: [
+                  const Text('Hold', style: TextStyle(fontWeight: FontWeight.bold)),
+                  _buildHoldBlock(),
+                ],
+              ),
+              Column(
+                children: [
                   const Text('Next', style: TextStyle(fontWeight: FontWeight.bold)),
                   _buildNextBlock(),
                 ],
               ),
-              Text('Score: $score', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              // スコア表示をshooting_game.dart風に
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ScoreA: $scoreA', style: const TextStyle(fontSize: 16, color: Colors.blue)),
+                  Text('ScoreB: $scoreB', style: const TextStyle(fontSize: 16, color: Colors.orange)),
+                  Text('ScoreC: $scoreC', style: const TextStyle(fontSize: 16, color: Colors.green)),
+                  const SizedBox(height: 4),
+                  Text('合計: ${scoreA + scoreB + scoreC}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -461,7 +569,12 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
                 children: [
                   const Text('Game Over', style: TextStyle(fontSize: 28, color: Colors.red, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Score: $score', style: const TextStyle(fontSize: 22)),
+                  // スコア詳細表示
+                  Text('ScoreA: $scoreA', style: const TextStyle(fontSize: 18, color: Colors.blue)),
+                  Text('ScoreB: $scoreB', style: const TextStyle(fontSize: 18, color: Colors.orange)),
+                  Text('ScoreC: $scoreC', style: const TextStyle(fontSize: 18, color: Colors.green)),
+                  const SizedBox(height: 8),
+                  Text('合計: ${scoreA + scoreB + scoreC}', style: const TextStyle(fontSize: 22)),
                   const SizedBox(height: 8),
                   ElevatedButton(
                     onPressed: _startGame,
