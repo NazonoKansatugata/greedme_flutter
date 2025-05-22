@@ -196,8 +196,11 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
     super.initState();
     // 必要に応じてアドレスを変更
     _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
-    // ゲーム画面として登録
-    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    // ゲーム画面として登録（userIdを含める）
+    // userIdはこの画面のユーザーID（例: ログインユーザーや選択ユーザーID）
+    // ここでは例として「gameUserId」という変数を使う想定
+    final gameUserId = ""; // TODO: 適切なuserIdをセット
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': gameUserId}));
     _channel!.stream.listen((message) {
       try {
         final msg = jsonDecode(message);
