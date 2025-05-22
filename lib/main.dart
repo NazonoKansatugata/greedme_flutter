@@ -8,6 +8,8 @@ import 'ui/tetris_game.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -157,6 +159,41 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // WebSocket関連
+  WebSocketChannel? _channel;
+  String _lastInput = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // 必要に応じてアドレスを変更
+    _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
+    // ゲーム画面として登録
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    _channel!.stream.listen((message) {
+      try {
+        final msg = jsonDecode(message);
+        if (msg['type'] == 'input') {
+          setState(() {
+            _lastInput = msg['data'].toString();
+          });
+          // ログ出力
+          print('コントローラーからの指示: ${msg['data']}');
+        }
+      } catch (e) {
+        print('WebSocket受信エラー: $e');
+      }
+    }, onError: (error) {
+      print('WebSocketエラー: $error');
+    });
+  }
+
+  @override
+  void dispose() {
+    _channel?.sink.close();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -255,20 +292,31 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 24.0, top: 8),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('ユーザーをタップしてゲームを始めてください')),
-                    );
-                  },
-                  icon: const Icon(Icons.info_outline),
-                  label: const Text('遊び方'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber.shade700,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                child: Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('ユーザーをタップしてゲームを始めてください')),
+                        );
+                      },
+                      icon: const Icon(Icons.info_outline),
+                      label: const Text('遊び方'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 追加: コントローラーからの指示を表示
+                    if (_lastInput.isNotEmpty)
+                      Text(
+                        'コントローラーからの指示: $_lastInput',
+                        style: const TextStyle(fontSize: 20, color: Colors.deepPurple),
+                      ),
+                  ],
                 ),
               ),
             ],
