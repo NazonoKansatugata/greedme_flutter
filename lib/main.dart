@@ -95,7 +95,7 @@ class _MyHomePageState extends State<MyHomePage> {
       howToTitle = 'フラッピーバード風ゲームの遊び方';
       howToDesc = '画面タップまたはジャンプボタンで上昇します。\n3種類のオブジェクトを取ってスコアを稼ごう！30秒間の勝負です。';
     } else {
-      gameWidget = const TetrisGamePage();
+      gameWidget = TetrisGamePage(userId: userId);
       howToTitle = 'テトリス風ゲームの遊び方';
       howToDesc = 'ブロックを左右移動・回転・落下させて横一列を揃えましょう。\n操作: ←→で移動、回転ボタン、↓でソフトドロップ、⏬でハードドロップ。';
     }
