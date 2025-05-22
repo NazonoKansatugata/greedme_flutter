@@ -166,7 +166,7 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
 
     // WebSocket接続
     _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
-    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': widget.userId}));
     _channel!.stream.listen((message) {
       try {
         final msg = jsonDecode(message);
