@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:math';
 import 'ui/shooting_game.dart';
-import 'ui/whack_a_mole.dart';
 import 'ui/flappy_collect.dart';
 import 'ui/tetris_game.dart';
 import 'ui/puyo_game.dart';
+import 'ui/rhythm_game.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
@@ -79,30 +79,53 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _startGame(String userId) async {
     final rand = Random();
-    final gameType = rand.nextInt(5); // 0:shooting, 1:whack, 2:flappy, 3:tetris, 4:puyo
+    final gameType = rand.nextInt(5); // 0:shooting, 1:flappy, 2:tetris, 3:puyo, 4:rhythm
     Widget gameWidget;
     String howToTitle = '';
     String howToDesc = '';
     if (gameType == 0) {
       gameWidget = ShootingGamePage(userId: userId);
       howToTitle = 'シューティングゲームの遊び方';
-      howToDesc = '左右ボタンまたは←→キーで移動し、中央のボタンまたはスペースキーで弾を連射して障害物を撃ちましょう。\n30秒間でたくさん撃ち落とそう！';
+      howToDesc = '''
+左右・上下ボタンまたは←→↑↓キーで移動します。
+Aボタンで弾の種類（速射1方向/遅射3方向）を切り替えます。
+Bボタンで移動速度（遅い/普通/速い）を切り替えます。
+敵や敵弾に当たるとゲーム終了。撃破数がスコアです。
+''';
     } else if (gameType == 1) {
-      gameWidget = WhackAMolePage(userId: userId);
-      howToTitle = 'もぐらたたきの遊び方';
-      howToDesc = '3種類のもぐらが出てきます。タップして素早くたたきましょう。\n30秒間でたくさん叩いてスコアを稼ごう！';
-    } else if (gameType == 2) {
       gameWidget = FlappyCollectPage(userId: userId);
       howToTitle = 'フラッピーバード風ゲームの遊び方';
-      howToDesc = '画面タップまたはジャンプボタンで上昇します。\n3種類のオブジェクトを取ってスコアを稼ごう！30秒間の勝負です。';
-    } else if (gameType == 3) {
+      howToDesc = '''
+画面タップまたはジャンプボタンで上昇します。
+3種類のオブジェクトを取ってスコアを稼ごう！
+30秒間の勝負です。
+''';
+    } else if (gameType == 2) {
       gameWidget = TetrisGamePage(userId: userId);
       howToTitle = 'テトリス風ゲームの遊び方';
-      howToDesc = 'ブロックを左右移動・回転・落下させて横一列を揃えましょう。\n操作: ←→で移動、回転ボタン、↓でソフトドロップ、⏬でハードドロップ。';
-    } else {
+      howToDesc = '''
+左右ボタンまたは←→キーで移動、AボタンまたはAキーで回転、BボタンまたはBキーでホールド。
+↓でソフトドロップ、↑でハードドロップ。
+1ライン消去ごとに含まれるミノの種類ごとにスコアA/B/Cに加算されます。
+''';
+    } else if (gameType == 3) {
       gameWidget = PuyoGamePage(userId: userId);
       howToTitle = 'ぷよぷよ風ゲームの遊び方';
-      howToDesc = '赤・緑・青の3色ぷよを左右移動・回転・落下させて、同じ色を4つ以上つなげて消そう！\n左:← 右:→ 回転:A 落下:↓ ホールド:B\n消した色ごとにScoreA(赤), ScoreB(緑), ScoreC(青)に加算されます。';
+      howToDesc = '''
+左右ボタンまたは←→キーで移動、AボタンまたはAキーで回転、BボタンまたはBキーでホールド。
+↓で落下。
+6色ぷよを2つ1組で操作し、同じ色を4つ以上つなげて消そう！
+消した色ごとにScoreA(赤・緑), ScoreB(青・黄), ScoreC(紫・オレンジ)に加算されます。
+連鎖するとスコア倍率アップ！
+''';
+    } else {
+      gameWidget = RhythmGamePage(userId: userId);
+      howToTitle = 'リズムゲームの遊び方';
+      howToDesc = '''
+画面下部またはコントローラーの上・下・右・左・A・Bボタンに対応したノーツが判定ラインに重なったタイミングで押しましょう。
+上・下でScoreA、右・左でScoreB、A・BでScoreCに加算されます。
+30秒間のスコアを競います。
+''';
     }
     await _showHowToPlayDialog(context, howToTitle, howToDesc, () {
       Navigator.push(
