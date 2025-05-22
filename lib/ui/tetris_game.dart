@@ -5,7 +5,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-const int rowCount = 20;
+const int rowCount = 15;
 const int colCount = 10;
 const Duration tick = Duration(milliseconds: 400);
 

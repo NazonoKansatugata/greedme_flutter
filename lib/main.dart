@@ -5,6 +5,7 @@ import 'ui/shooting_game.dart';
 import 'ui/whack_a_mole.dart';
 import 'ui/flappy_collect.dart';
 import 'ui/tetris_game.dart';
+import 'ui/puyo_game.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
@@ -78,7 +79,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _startGame(String userId) async {
     final rand = Random();
-    final gameType = rand.nextInt(4); // 0:shooting, 1:whack, 2:flappy, 3:tetris
+    final gameType = rand.nextInt(5); // 0:shooting, 1:whack, 2:flappy, 3:tetris, 4:puyo
     Widget gameWidget;
     String howToTitle = '';
     String howToDesc = '';
@@ -94,10 +95,14 @@ class _MyHomePageState extends State<MyHomePage> {
       gameWidget = FlappyCollectPage(userId: userId);
       howToTitle = 'フラッピーバード風ゲームの遊び方';
       howToDesc = '画面タップまたはジャンプボタンで上昇します。\n3種類のオブジェクトを取ってスコアを稼ごう！30秒間の勝負です。';
-    } else {
+    } else if (gameType == 3) {
       gameWidget = TetrisGamePage(userId: userId);
       howToTitle = 'テトリス風ゲームの遊び方';
       howToDesc = 'ブロックを左右移動・回転・落下させて横一列を揃えましょう。\n操作: ←→で移動、回転ボタン、↓でソフトドロップ、⏬でハードドロップ。';
+    } else {
+      gameWidget = PuyoGamePage(userId: userId);
+      howToTitle = 'ぷよぷよ風ゲームの遊び方';
+      howToDesc = '赤・緑・青の3色ぷよを左右移動・回転・落下させて、同じ色を4つ以上つなげて消そう！\n左:← 右:→ 回転:A 落下:↓ ホールド:B\n消した色ごとにScoreA(赤), ScoreB(緑), ScoreC(青)に加算されます。';
     }
     await _showHowToPlayDialog(context, howToTitle, howToDesc, () {
       Navigator.push(

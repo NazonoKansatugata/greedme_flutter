@@ -3,49 +3,75 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
 
-enum ObstacleType { typeA, typeB, typeC }
+enum EnemyType { typeA, typeB, typeC }
 
 class Bullet {
   double x;
   double y;
   double dy;
+  double dx;
   bool isPlayer;
-  Bullet({required this.x, required this.y, required this.dy, required this.isPlayer});
+  int type; // 弾の種類
+  Bullet({
+    required this.x,
+    required this.y,
+    this.dy = 0,
+    this.dx = 0,
+    required this.isPlayer,
+    required this.type,
+  });
   void move() {
+    x += dx;
     y += dy;
   }
 }
 
-class Obstacle {
+class Enemy {
   double x;
   double y;
-  final ObstacleType type;
+  final EnemyType type;
   double speed;
+  int fireInterval; // 何フレームごとに弾を撃つか
+  int fireCounter = 0;
 
-  Obstacle({required this.x, required this.y, required this.type})
-      : speed = _getSpeed(type);
+  Enemy({required this.x, required this.y, required this.type})
+      : speed = _getSpeed(type),
+        fireInterval = _getFireInterval(type);
 
   void move() {
     y += speed;
   }
 
-  static double _getSpeed(ObstacleType type) {
+  static double _getSpeed(EnemyType type) {
     switch (type) {
-      case ObstacleType.typeA:
-        return 3;
-      case ObstacleType.typeB:
-        return 5;
-      case ObstacleType.typeC:
-        return 2;
+      case EnemyType.typeA:
+        return 2.5;
+      case EnemyType.typeB:
+        return 1.5;
+      case EnemyType.typeC:
+        return 3.5;
+    }
+  }
+
+  static int _getFireInterval(EnemyType type) {
+    switch (type) {
+      case EnemyType.typeA:
+        return 90;
+      case EnemyType.typeB:
+        return 60;
+      case EnemyType.typeC:
+        return 120;
     }
   }
 
   Widget getWidget() {
     switch (type) {
-      case ObstacleType.typeA:
-        return Container(width: 30, height: 30, color: Colors.green);
-      case ObstacleType.typeB:
+      case EnemyType.typeA:
+        return Container(width: 30, height: 30, color: Colors.green, child: const Icon(Icons.bug_report, color: Colors.white));
+      case EnemyType.typeB:
         return Container(
           width: 40,
           height: 20,
@@ -53,30 +79,31 @@ class Obstacle {
             color: Colors.yellow,
             borderRadius: BorderRadius.circular(10),
           ),
+          child: const Icon(Icons.android, color: Colors.black),
         );
-      case ObstacleType.typeC:
+      case EnemyType.typeC:
         return Icon(Icons.star, color: Colors.pink, size: 32);
     }
   }
 
   double getWidth() {
     switch (type) {
-      case ObstacleType.typeA:
+      case EnemyType.typeA:
         return 30;
-      case ObstacleType.typeB:
+      case EnemyType.typeB:
         return 40;
-      case ObstacleType.typeC:
+      case EnemyType.typeC:
         return 32;
     }
   }
 
   double getHeight() {
     switch (type) {
-      case ObstacleType.typeA:
+      case EnemyType.typeA:
         return 30;
-      case ObstacleType.typeB:
+      case EnemyType.typeB:
         return 20;
-      case ObstacleType.typeC:
+      case EnemyType.typeC:
         return 32;
     }
   }
@@ -87,8 +114,8 @@ class Player {
   double y;
   Player({required this.x, required this.y});
 
-  Bullet shoot() {
-    return Bullet(x: x, y: y, dy: -8, isPlayer: true);
+  Bullet shoot(int bulletType) {
+    return Bullet(x: x, y: y, dy: -8, isPlayer: true, type: bulletType);
   }
 }
 
@@ -103,62 +130,101 @@ class ShootingGamePage extends StatefulWidget {
 class _ShootingGamePageState extends State<ShootingGamePage> {
   late Player player;
   List<Bullet> bullets = [];
-  List<Obstacle> obstacles = [];
+  List<Enemy> enemies = [];
   Timer? timer;
-  Timer? gameTimer;
   Timer? leftMoveTimer;
   Timer? rightMoveTimer;
+  Timer? upMoveTimer;
+  Timer? downMoveTimer;
   Timer? shootTimer;
   Random rand = Random();
-  double screenWidth = 600; // 固定サイズ
-  double screenHeight = 900; // 固定サイズ
-  int timeLeft = 30;
+  double screenWidth = 600;
+  double screenHeight = 900;
   bool isGameOver = false;
 
-  Map<ObstacleType, int> scores = {
-    ObstacleType.typeA: 0,
-    ObstacleType.typeB: 0,
-    ObstacleType.typeC: 0,
+  Map<EnemyType, int> scores = {
+    EnemyType.typeA: 0,
+    EnemyType.typeB: 0,
+    EnemyType.typeC: 0,
   };
+
+  WebSocketChannel? _channel;
+
+  int bulletType = 0; // 0:1方向速射, 1:3方向遅射
+  static const bulletColors = [Colors.red, Colors.blue];
+
+  // 移動速度段階
+  final List<int> moveSteps = [30, 45, 60];
+  int moveStepIndex = 0; // 0:遅い, 1:普通, 2:速い
+  int get moveStep => moveSteps[moveStepIndex];
 
   @override
   void initState() {
     super.initState();
     player = Player(x: 150, y: 500);
     timer = Timer.periodic(const Duration(milliseconds: 16), _update);
-    gameTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (mounted && !isGameOver) {
-        setState(() {
-          timeLeft--;
-          if (timeLeft <= 0) {
-            _endGame();
+
+    // WebSocket接続
+    _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    _channel!.stream.listen((message) {
+      try {
+        final msg = jsonDecode(message);
+        if (msg['type'] == 'input') {
+          final input = msg['data'];
+          if (input == 'left') {
+            _movePlayer(-moveStep.toDouble(), 0);
+          } else if (input == 'right') {
+            _movePlayer(moveStep.toDouble(), 0);
+          } else if (input == 'up') {
+            _movePlayer(0, -moveStep.toDouble());
+          } else if (input == 'down') {
+            _movePlayer(0, moveStep.toDouble());
+          } else if (input == 'A') {
+            _changeBulletType();
+          } else if (input == 'B') {
+            _changeMoveSpeed();
           }
-        });
+        }
+      } catch (e) {
+        print('WebSocket受信エラー: $e');
       }
+    }, onError: (error) {
+      print('WebSocketエラー: $error');
     });
+
+    _startShooting();
   }
 
   @override
   void dispose() {
+    _channel?.sink.close();
     timer?.cancel();
-    gameTimer?.cancel();
     leftMoveTimer?.cancel();
     rightMoveTimer?.cancel();
+    upMoveTimer?.cancel();
+    downMoveTimer?.cancel();
     shootTimer?.cancel();
     super.dispose();
   }
 
-  void _movePlayer(double dx) {
+  void _changeMoveSpeed() {
+    setState(() {
+      moveStepIndex = (moveStepIndex + 1) % moveSteps.length;
+    });
+  }
+
+  void _movePlayer(double dx, [double dy = 0]) {
     if (isGameOver) return;
     setState(() {
       player.x += dx;
-      // 画面外に出ないように制限（右端も正しく止まるよう修正）
+      player.y += dy;
       double maxX = screenWidth - 30;
-      if (player.x < 0) {
-        player.x = 0;
-      } else if (player.x > maxX) {
-        player.x = maxX;
-      }
+      double maxY = screenHeight - 30;
+      if (player.x < 0) player.x = 0;
+      if (player.x > maxX) player.x = maxX;
+      if (player.y < 0) player.y = 0;
+      if (player.y > maxY) player.y = maxY;
     });
   }
 
@@ -166,81 +232,130 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
     if (isGameOver) return;
     setState(() {
       player.x += details.delta.dx;
-      // 画面外に出ないように制限（右端も正しく止まるよう修正）
+      player.y += details.delta.dy;
       double maxX = screenWidth - 30;
-      if (player.x < 0) {
-        player.x = 0;
-      } else if (player.x > maxX) {
-        player.x = maxX;
-      }
+      double maxY = screenHeight - 30;
+      if (player.x < 0) player.x = 0;
+      if (player.x > maxX) player.x = maxX;
+      if (player.y < 0) player.y = 0;
+      if (player.y > maxY) player.y = maxY;
     });
   }
 
   void _update(Timer timer) {
     if (isGameOver) return;
     setState(() {
+      // 弾移動
       bullets.forEach((b) => b.move());
-      bullets.removeWhere((b) => b.y < 0 || b.y > screenHeight);
+      bullets.removeWhere((b) => b.y < -20 || b.y > screenHeight + 20);
 
-      obstacles.forEach((o) => o.move());
-      obstacles.removeWhere((o) => o.y > screenHeight);
+      // 敵移動・攻撃
+      for (var enemy in enemies) {
+        enemy.move();
+        enemy.fireCounter++;
+        if (enemy.fireCounter >= enemy.fireInterval) {
+          enemy.fireCounter = 0;
+          // 敵弾発射
+          bullets.add(Bullet(
+            x: enemy.x + enemy.getWidth() / 2 - 3,
+            y: enemy.y + enemy.getHeight(),
+            dy: 6,
+            isPlayer: false,
+            type: 0,
+          ));
+        }
+      }
+      enemies.removeWhere((e) => e.y > screenHeight + 40);
 
+      // 弾と敵の当たり判定
       List<Bullet> removeBullets = [];
-      List<Obstacle> removeObstacles = [];
-      for (var bullet in bullets) {
-        for (var obs in obstacles) {
-          if (_hitTest(bullet, obs)) {
+      List<Enemy> removeEnemies = [];
+      for (var bullet in bullets.where((b) => b.isPlayer)) {
+        for (var enemy in enemies) {
+          if (_hitTest(bullet, enemy)) {
             removeBullets.add(bullet);
-            removeObstacles.add(obs);
-            scores[obs.type] = (scores[obs.type] ?? 0) + 1;
+            removeEnemies.add(enemy);
+            scores[enemy.type] = (scores[enemy.type] ?? 0) + 1;
             break;
           }
         }
       }
       bullets.removeWhere((b) => removeBullets.contains(b));
-      obstacles.removeWhere((o) => removeObstacles.contains(o));
+      enemies.removeWhere((e) => removeEnemies.contains(e));
 
-      // 障害物の頻度を減らす（例: 60フレームごとに1つ生成）
+      // 敵弾とプレイヤーの当たり判定
+      for (var bullet in bullets.where((b) => !b.isPlayer)) {
+        if (_playerHitTest(bullet)) {
+          _endGame();
+          return;
+        }
+      }
+      // 敵本体とプレイヤーの当たり判定
+      for (var enemy in enemies) {
+        if (_playerHitTestEnemy(enemy)) {
+          _endGame();
+          return;
+        }
+      }
+
+      // 一定間隔で敵生成
       if (timer.tick % 60 == 0) {
-        obstacles.add(_randomObstacle());
+        enemies.add(_randomEnemy());
       }
     });
   }
 
-  bool _hitTest(Bullet b, Obstacle o) {
+  bool _hitTest(Bullet b, Enemy e) {
     double bw = 6, bh = 12;
-    double ow = o.getWidth(), oh = o.getHeight();
-    return !(b.x + bw < o.x ||
-        b.x > o.x + ow ||
-        b.y + bh < o.y ||
-        b.y > o.y + oh);
+    double ew = e.getWidth(), eh = e.getHeight();
+    return !(b.x + bw < e.x ||
+        b.x > e.x + ew ||
+        b.y + bh < e.y ||
+        b.y > e.y + eh);
   }
 
-  Obstacle _randomObstacle() {
+  bool _playerHitTest(Bullet b) {
+    double bw = 6, bh = 12;
+    double px = player.x, py = player.y, pw = 30, ph = 30;
+    return !(b.x + bw < px ||
+        b.x > px + pw ||
+        b.y + bh < py ||
+        b.y > py + ph);
+  }
+
+  bool _playerHitTestEnemy(Enemy e) {
+    double px = player.x, py = player.y, pw = 30, ph = 30;
+    double ew = e.getWidth(), eh = e.getHeight();
+    return !(e.x + ew < px ||
+        e.x > px + pw ||
+        e.y + eh < py ||
+        e.y > py + ph);
+  }
+
+  Enemy _randomEnemy() {
     int type = rand.nextInt(3);
-    // 画面内のみで生成
     double maxWidth = screenWidth - 40;
     double x = rand.nextDouble() * maxWidth;
-    return Obstacle(x: x, y: 0, type: ObstacleType.values[type]);
+    return Enemy(x: x, y: 0, type: EnemyType.values[type]);
   }
 
   void _onTapDown(TapDownDetails details) {
     if (isGameOver) return;
-    bullets.add(player.shoot());
+    bullets.add(player.shoot(bulletType));
   }
 
   void _endGame() async {
     isGameOver = true;
     timer?.cancel();
-    gameTimer?.cancel();
 
+    // スコアを2倍して保存
     await FirebaseFirestore.instance
         .collection('users')
         .doc(widget.userId)
         .set({
-      'score_typeA': scores[ObstacleType.typeA],
-      'score_typeB': scores[ObstacleType.typeB],
-      'score_typeC': scores[ObstacleType.typeC],
+      'score_typeA': (scores[EnemyType.typeA] ?? 0) * 2,
+      'score_typeB': (scores[EnemyType.typeB] ?? 0) * 2,
+      'score_typeC': (scores[EnemyType.typeC] ?? 0) * 2,
     }, SetOptions(merge: true));
 
     showDialog(
@@ -251,11 +366,11 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('TypeA: ${scores[ObstacleType.typeA]}'),
-            Text('TypeB: ${scores[ObstacleType.typeB]}'),
-            Text('TypeC: ${scores[ObstacleType.typeC]}'),
+            Text('TypeA: ${(scores[EnemyType.typeA] ?? 0) * 2}'),
+            Text('TypeB: ${(scores[EnemyType.typeB] ?? 0) * 2}'),
+            Text('TypeC: ${(scores[EnemyType.typeC] ?? 0) * 2}'),
             const SizedBox(height: 16),
-            Text('合計: ${scores.values.reduce((a, b) => a + b)}'),
+            Text('合計: ${(scores.values.reduce((a, b) => a + b)) * 2}'),
           ],
         ),
         actions: [
@@ -273,56 +388,49 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
 
   FocusNode focusNode = FocusNode();
 
-  void _startMoveLeft() {
-    leftMoveTimer?.cancel();
-    leftMoveTimer = Timer.periodic(const Duration(milliseconds: 30), (_) {
-      _movePlayer(-5);
+  void _changeBulletType() {
+    setState(() {
+      bulletType = (bulletType + 1) % 2;
     });
+    _startShooting();
   }
 
-  void _stopMoveLeft() {
-    leftMoveTimer?.cancel();
-  }
-
-  void _startMoveRight() {
-    rightMoveTimer?.cancel();
-    rightMoveTimer = Timer.periodic(const Duration(milliseconds: 30), (_) {
-      _movePlayer(5);
-    });
-  }
-
-  void _stopMoveRight() {
-    rightMoveTimer?.cancel();
-  }
-
-  // --- 連射制御の整理 ---
   bool _isShooting = false;
-
   void _startShooting() {
-    if (_isShooting) return;
-    _isShooting = true;
-    shootTimer?.cancel();
-    shootTimer = Timer.periodic(const Duration(milliseconds: 300), (_) { // 連射頻度を下げる
-      if (!isGameOver && _isShooting) {
-        setState(() {
-          bullets.add(player.shoot());
-        });
-      }
-    });
-  }
-
-  void _stopShooting() {
     _isShooting = false;
     shootTimer?.cancel();
+    _isShooting = true;
+    shootTimer = Timer.periodic(
+      Duration(milliseconds: bulletType == 0 ? 200 : 1000),
+      (_) {
+        if (!isGameOver && _isShooting) {
+          setState(() {
+            if (bulletType == 0) {
+              // 1方向速射
+              bullets.add(player.shoot(0));
+            } else {
+              // 3方向遅射
+              bullets.add(Bullet(x: player.x, y: player.y, dy: -8, isPlayer: true, type: 1));
+              bullets.add(Bullet(x: player.x, y: player.y, dy: -8, isPlayer: true, type: 1)
+                ..x -= 10
+                ..dy = -8
+                ..dx = -3);
+              bullets.add(Bullet(x: player.x, y: player.y, dy: -8, isPlayer: true, type: 1)
+                ..x += 10
+                ..dy = -8
+                ..dx = 3);
+            }
+          });
+        }
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // 必ず固定サイズで描画
     screenWidth = 600;
     screenHeight = 900;
     if (!focusNode.hasFocus) {
-      // build内でrequestFocusは1回だけ
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!focusNode.hasFocus) {
           focusNode.requestFocus();
@@ -340,28 +448,24 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
             focusNode: focusNode,
             autofocus: true,
             onKey: (event) {
-              // キー押下時
               if (event is RawKeyDownEvent && !event.repeat) {
                 if (event.isKeyPressed(LogicalKeyboardKey.arrowLeft)) {
-                  _startMoveLeft();
+                  _movePlayer(-moveStep.toDouble(), 0);
                 }
                 if (event.isKeyPressed(LogicalKeyboardKey.arrowRight)) {
-                  _startMoveRight();
+                  _movePlayer(moveStep.toDouble(), 0);
                 }
-                if (event.isKeyPressed(LogicalKeyboardKey.space)) {
-                  _startShooting();
+                if (event.isKeyPressed(LogicalKeyboardKey.arrowUp)) {
+                  _movePlayer(0, -moveStep.toDouble());
                 }
-              }
-              // キー離し時
-              if (event is RawKeyUpEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  _stopMoveLeft();
+                if (event.isKeyPressed(LogicalKeyboardKey.arrowDown)) {
+                  _movePlayer(0, moveStep.toDouble());
                 }
-                if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                  _stopMoveRight();
+                if (event.isKeyPressed(LogicalKeyboardKey.keyA)) {
+                  _changeBulletType();
                 }
-                if (event.logicalKey == LogicalKeyboardKey.space) {
-                  _stopShooting();
+                if (event.isKeyPressed(LogicalKeyboardKey.keyB)) {
+                  _changeMoveSpeed();
                 }
               }
             },
@@ -370,15 +474,6 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
               onTapDown: _onTapDown,
               child: Stack(
                 children: [
-                  // タイマー表示
-                  Positioned(
-                    top: 20,
-                    left: 20,
-                    child: Text(
-                      '残り: $timeLeft 秒',
-                      style: const TextStyle(color: Colors.white, fontSize: 20),
-                    ),
-                  ),
                   // プレイヤー
                   Positioned(
                     left: player.x,
@@ -389,13 +484,17 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
                   ...bullets.map((b) => Positioned(
                     left: b.x + 12,
                     top: b.y,
-                    child: Container(width: 6, height: 12, color: Colors.white),
+                    child: Container(
+                      width: 6,
+                      height: 12,
+                      color: bulletColors[b.type % bulletColors.length],
+                    ),
                   )),
-                  // 障害物
-                  ...obstacles.map((o) => Positioned(
-                    left: o.x,
-                    top: o.y,
-                    child: o.getWidget(),
+                  // 敵
+                  ...enemies.map((e) => Positioned(
+                    left: e.x,
+                    top: e.y,
+                    child: e.getWidget(),
                   )),
                   // 操作ボタン
                   if (!isGameOver)
@@ -407,9 +506,7 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           GestureDetector(
-                            onTapDown: (_) => _startMoveLeft(),
-                            onTapUp: (_) => _stopMoveLeft(),
-                            onTapCancel: _stopMoveLeft,
+                            onTapDown: (_) => _movePlayer(-moveStep.toDouble(), 0),
                             child: ElevatedButton(
                               onPressed: null,
                               style: ElevatedButton.styleFrom(
@@ -422,24 +519,20 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
                           ),
                           const SizedBox(width: 20),
                           GestureDetector(
-                            onTapDown: (_) => _startShooting(),
-                            onTapUp: (_) => _stopShooting(),
-                            onTapCancel: _stopShooting,
+                            onTapDown: (_) => _changeBulletType(),
                             child: ElevatedButton(
                               onPressed: null,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
+                                backgroundColor: bulletColors[bulletType],
                                 shape: const CircleBorder(),
                                 padding: const EdgeInsets.all(18),
                               ),
-                              child: const Icon(Icons.circle, size: 28),
+                              child: const Icon(Icons.change_circle, size: 28),
                             ),
                           ),
                           const SizedBox(width: 20),
                           GestureDetector(
-                            onTapDown: (_) => _startMoveRight(),
-                            onTapUp: (_) => _stopMoveRight(),
-                            onTapCancel: _stopMoveRight,
+                            onTapDown: (_) => _movePlayer(moveStep.toDouble(), 0),
                             child: ElevatedButton(
                               onPressed: null,
                               style: ElevatedButton.styleFrom(
@@ -450,7 +543,76 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
                               child: const Icon(Icons.arrow_right, size: 32),
                             ),
                           ),
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTapDown: (_) => _movePlayer(0, -moveStep.toDouble()),
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueGrey,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: const Icon(Icons.arrow_upward, size: 32),
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTapDown: (_) => _movePlayer(0, moveStep.toDouble()),
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueGrey,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: const Icon(Icons.arrow_downward, size: 32),
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          GestureDetector(
+                            onTapDown: (_) => _changeMoveSpeed(),
+                            child: ElevatedButton(
+                              onPressed: null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber,
+                                shape: const CircleBorder(),
+                                padding: const EdgeInsets.all(18),
+                              ),
+                              child: Icon(Icons.speed, size: 28, color: Colors.black87),
+                            ),
+                          ),
                         ],
+                      ),
+                    ),
+                  if (isGameOver)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.7),
+                        child: Center(
+                          child: AlertDialog(
+                            title: const Text('ゲーム終了'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('TypeA: ${(scores[EnemyType.typeA] ?? 0) * 2}'),
+                                Text('TypeB: ${(scores[EnemyType.typeB] ?? 0) * 2}'),
+                                Text('TypeC: ${(scores[EnemyType.typeC] ?? 0) * 2}'),
+                                const SizedBox(height: 16),
+                                Text('合計: ${(scores.values.reduce((a, b) => a + b)) * 2}'),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                 ],
