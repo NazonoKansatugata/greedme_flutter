@@ -60,7 +60,7 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     gameTimer = Timer(gameDuration, _endGame);
 
     _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
-    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': widget.userId}));
     _channel!.stream.listen((message) {
       try {
         final msg = jsonDecode(message);
