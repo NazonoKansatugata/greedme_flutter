@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
 
 const int rowCount = 20;
 const int colCount = 10;
@@ -159,10 +161,42 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
   bool isGameOver = false;
   final Random rand = Random();
 
+  // WebSocket関連
+  WebSocketChannel? _channel;
+
   @override
   void initState() {
     super.initState();
     _startGame();
+
+    // WebSocket接続
+    _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
+    // ゲーム画面として登録
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
+    _channel!.stream.listen((message) {
+      try {
+        final msg = jsonDecode(message);
+        if (msg['type'] == 'input') {
+          final input = msg['data'];
+          // コントローラーからの指示に応じて操作
+          if (input == 'left') {
+            _move(-1);
+          } else if (input == 'right') {
+            _move(1);
+          } else if (input == 'rotate') {
+            _rotate();
+          } else if (input == 'soft_drop') {
+            _tick();
+          } else if (input == 'hard_drop') {
+            _drop();
+          }
+        }
+      } catch (e) {
+        print('WebSocket受信エラー: $e');
+      }
+    }, onError: (error) {
+      print('WebSocketエラー: $error');
+    });
   }
 
   void _startGame() {
@@ -284,6 +318,7 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
 
   @override
   void dispose() {
+    _channel?.sink.close();
     timer?.cancel();
     super.dispose();
   }

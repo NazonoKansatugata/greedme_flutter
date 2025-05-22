@@ -167,7 +167,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     // 必要に応じてアドレスを変更
-    _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8080'));
+    _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
     // ゲーム画面として登録
     _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game'}));
     _channel!.stream.listen((message) {
