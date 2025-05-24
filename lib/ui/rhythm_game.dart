@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 class RhythmGamePage extends StatefulWidget {
   final String userId;
@@ -14,22 +15,22 @@ class RhythmGamePage extends StatefulWidget {
 }
 
 class _RhythmGamePageState extends State<RhythmGamePage> {
-  static const int laneCount = 3; // レーン3つ
-  static const int noteTypeCount = 3; // ノーツ種類3種
-  static const double noteSpeed = 300; // px/sec
+  static const int laneCount = 1;
+  static const int noteTypeCount = 6;
+  static const double noteSpeed = 120; // ここを遅く
   static const Duration gameDuration = Duration(seconds: 30);
 
-  // レーン: 0=上左, 1=右下, 2=AB
-  static const List<List<String>> laneInputs = [
-    ['up', 'left'],   // レーン0: 上 or 左
-    ['right', 'down'],// レーン1: 右 or 下
-    ['A', 'B'],       // レーン2: A or B
+  static const List<String> noteInputs = [
+    'A', 'B', 'up', 'down', 'left', 'right'
   ];
-  static const List<String> laneLabels = ['↑/←', '→/↓', 'A/B'];
-  static const List<IconData> laneIcons = [
-    Icons.unfold_less, // 上/左
-    Icons.unfold_more, // 右/下
-    Icons.games,       // A/B
+  static const List<String> noteLabels = [
+    'A', 'B', '↑', '↓', '←', '→'
+  ];
+  static const List<IconData> noteIcons = [
+    Icons.circle, Icons.square, Icons.arrow_upward, Icons.arrow_downward, Icons.arrow_left, Icons.arrow_right
+  ];
+  static const List<Color> noteColors = [
+    Colors.red, Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.amber
   ];
 
   late Timer timer;
@@ -37,19 +38,17 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
   double elapsed = 0;
   bool isGameOver = false;
   List<_Note> notes = [];
-  int scoreA = 0;
-  int scoreB = 0;
-  int scoreC = 0;
   Random rand = Random();
 
   WebSocketChannel? _channel;
 
-  // 入力→lane
-  int? _inputToLane(String input) {
-    for (int i = 0; i < laneInputs.length; i++) {
-      if (laneInputs[i].contains(input)) return i;
-    }
-    return null;
+  int scoreA = 0; // A, B
+  int scoreB = 0; // ↑, ↓
+  int scoreC = 0; // ←, →
+  
+  // 入力→ノーツ種別
+  int? _inputToNoteType(String input) {
+    return noteInputs.indexOf(input);
   }
 
   @override
@@ -66,9 +65,9 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
         final msg = jsonDecode(message);
         if (msg['type'] == 'input') {
           final input = msg['data'];
-          final lane = _inputToLane(input);
-          if (lane != null) {
-            _hitLane(lane);
+          final noteType = _inputToNoteType(input);
+          if (noteType != -1 && noteType != null) {
+            _hitNote(noteType);
           }
         }
       } catch (e) {
@@ -83,8 +82,8 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     notes.clear();
     double t = 1.0;
     while (t < gameDuration.inSeconds - 1) {
-      int lane = rand.nextInt(laneCount); // 0,1,2
-      notes.add(_Note(lane: lane, time: t));
+      int noteType = rand.nextInt(noteTypeCount);
+      notes.add(_Note(type: noteType, time: t));
       t += 0.5 + rand.nextDouble() * 0.7;
     }
   }
@@ -96,20 +95,24 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     });
   }
 
-  void _hitLane(int lane) {
+  void _hitNote(int noteType) {
     if (isGameOver) return;
     for (final note in notes) {
       if (note.hit) continue;
-      if (note.lane == lane && (note.time - elapsed).abs() < 0.25) {
-        note.hit = true;
-        if (lane == 0) {
-          scoreA += 10;
-        } else if (lane == 1) {
-          scoreB += 10;
-        } else {
-          scoreC += 10;
+      if (note.type == noteType) {
+        double noteX = _noteX(note);
+        double hitLineX = 60;
+        if ((noteX - hitLineX).abs() < 32) {
+          note.hit = true;
+          if (noteType == 0 || noteType == 1) {
+            scoreA += 10;
+          } else if (noteType == 2 || noteType == 3) {
+            scoreB += 10;
+          } else if (noteType == 4 || noteType == 5) {
+            scoreC += 10;
+          }
+          break;
         }
-        break;
       }
     }
   }
@@ -131,6 +134,13 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     gameTimer.cancel();
     await _saveScoreToFirestore();
     setState(() {});
+    // リダイレクト
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      final url = Uri.parse('https://unity-greendme.web.app/');
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    });
   }
 
   @override
@@ -141,12 +151,17 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     super.dispose();
   }
 
+  double _noteX(_Note note) {
+    double screenWidth = 420;
+    // 右から左へ流れるように修正
+    return screenWidth - ((note.time - elapsed) * noteSpeed) - 40;
+  }
+
   @override
   Widget build(BuildContext context) {
     double screenWidth = 420;
-    double screenHeight = 600;
-    double laneWidth = screenWidth / laneCount;
-    double hitLineY = screenHeight - 100;
+    double screenHeight = 200;
+    double hitLineX = 60;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -162,59 +177,47 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
             children: [
               // 判定ライン
               Positioned(
-                left: 0,
-                right: 0,
-                top: hitLineY,
-                height: 4,
+                left: hitLineX,
+                top: 0,
+                bottom: 0,
+                width: 6,
                 child: Container(color: Colors.white54),
               ),
               // ノーツ
               ...notes.map((note) {
                 if (note.hit) return const SizedBox.shrink();
-                double y = hitLineY - (note.time - elapsed) * noteSpeed;
-                if (y > screenHeight || y < -30) return const SizedBox.shrink();
+                double x = _noteX(note);
+                if (x < -40 || x > screenWidth) return const SizedBox.shrink();
                 return Positioned(
-                  left: note.lane * laneWidth + laneWidth * 0.15,
-                  top: y,
+                  left: x,
+                  top: 60,
                   child: Container(
-                    width: laneWidth * 0.7,
-                    height: 28,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: note.lane == 0
-                          ? Colors.red
-                          : note.lane == 1
-                              ? Colors.blue
-                              : Colors.orange,
-                      borderRadius: BorderRadius.circular(8),
+                      color: noteColors[note.type],
+                      shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
                     child: Center(
-                      child: Icon(laneIcons[note.lane], color: Colors.white, size: 20),
+                      child: Icon(noteIcons[note.type], color: Colors.white, size: 28),
                     ),
                   ),
-                );
-              }),
-              // レーン区切り
-              ...List.generate(laneCount - 1, (i) {
-                return Positioned(
-                  left: (i + 1) * laneWidth,
-                  top: 0,
-                  bottom: 0,
-                  child: Container(width: 2, color: Colors.white24),
                 );
               }),
               // スコア表示
               Positioned(
                 left: 16,
-                top: 16,
+                top: 8,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('ScoreA: $scoreA', style: const TextStyle(color: Colors.red, fontSize: 18)),
-                    Text('ScoreB: $scoreB', style: const TextStyle(color: Colors.blue, fontSize: 18)),
-                    Text('ScoreC: $scoreC', style: const TextStyle(color: Colors.orange, fontSize: 18)),
+                    Text('ScoreA: $scoreA', style: TextStyle(color: Colors.red, fontSize: 16)),
+                    Text('ScoreB: $scoreB', style: TextStyle(color: Colors.green, fontSize: 16)),
+                    Text('ScoreC: $scoreC', style: TextStyle(color: Colors.purple, fontSize: 16)),
                     const SizedBox(height: 4),
-                    Text('合計: ${scoreA + scoreB + scoreC}', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text('合計: ${scoreA + scoreB + scoreC}',
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -223,11 +226,11 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 20,
+                  bottom: 12,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(laneCount, (i) {
-                      return _laneButton(laneIcons[i], () => _hitLane(i), laneLabels[i]);
+                    children: List.generate(noteTypeCount, (i) {
+                      return _noteButton(noteIcons[i], () => _hitNote(i), noteLabels[i], noteColors[i]);
                     }),
                   ),
                 ),
@@ -241,27 +244,11 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
                         children: [
                           const Text('Game Over', style: TextStyle(fontSize: 32, color: Colors.red, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 16),
-                          Text('ScoreA: $scoreA', style: const TextStyle(fontSize: 20, color: Colors.red)),
-                          Text('ScoreB: $scoreB', style: const TextStyle(fontSize: 20, color: Colors.blue)),
-                          Text('ScoreC: $scoreC', style: const TextStyle(fontSize: 20, color: Colors.orange)),
+                          Text('ScoreA: $scoreA', style: const TextStyle(fontSize: 18, color: Colors.red)),
+                          Text('ScoreB: $scoreB', style: const TextStyle(fontSize: 18, color: Colors.green)),
+                          Text('ScoreC: $scoreC', style: const TextStyle(fontSize: 18, color: Colors.purple)),
                           const SizedBox(height: 8),
                           Text('合計: ${scoreA + scoreB + scoreC}', style: const TextStyle(fontSize: 24, color: Colors.white)),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: () {
-                              setState(() {
-                                elapsed = 0;
-                                scoreA = 0;
-                                scoreB = 0;
-                                scoreC = 0;
-                                isGameOver = false;
-                                _generateNotes();
-                                timer = Timer.periodic(const Duration(milliseconds: 16), _update);
-                                gameTimer = Timer(gameDuration, _endGame);
-                              });
-                            },
-                            child: const Text('もう一度プレイ'),
-                          ),
                         ],
                       ),
                     ),
@@ -274,20 +261,20 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
     );
   }
 
-  Widget _laneButton(IconData icon, VoidCallback onTap, String label) {
+  Widget _noteButton(IconData icon, VoidCallback onTap, String label, Color color) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
           Container(
-            width: 54,
-            height: 54,
+            width: 48,
+            height: 48,
             margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
-              color: Colors.deepPurple,
+              color: color,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: Colors.white, size: 28),
+            child: Icon(icon, color: Colors.white, size: 26),
           ),
           const SizedBox(height: 2),
           Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
@@ -298,8 +285,8 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
 }
 
 class _Note {
-  final int lane;
+  final int type;
   final double time;
   bool hit = false;
-  _Note({required this.lane, required this.time});
+  _Note({required this.type, required this.time});
 }

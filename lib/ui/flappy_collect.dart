@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 enum CollectType { typeA, typeB, typeC }
 
@@ -29,7 +32,6 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
   Timer? gameTimer;
   Timer? objectTimer;
   List<CollectObject> objects = [];
-  int timeLeft = 30;
   bool isGameOver = false;
   double screenWidth = 300;
   double screenHeight = 600;
@@ -41,25 +43,38 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
     CollectType.typeC: 0,
   };
 
+  WebSocketChannel? _channel;
+
   @override
   void initState() {
     super.initState();
     gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) => _update());
-    objectTimer = Timer.periodic(const Duration(milliseconds: 400), (_) => _spawnObject()); // 頻度UP
-    Timer.periodic(const Duration(seconds: 1), (t) {
-      if (mounted && !isGameOver) {
-        setState(() {
-          timeLeft--;
-          if (timeLeft <= 0) {
-            _endGame();
+    objectTimer = Timer.periodic(const Duration(milliseconds: 900), (_) => _spawnObject()); // 頻度を下げる
+
+    // WebSocket連動
+    _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
+    _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': widget.userId}));
+    _channel!.stream.listen((message) {
+      try {
+        final msg = jsonDecode(message);
+        if (msg['type'] == 'input') {
+          final input = msg['data'];
+          // ジャンプ操作に割り当て
+          if (input == 'up' || input == 'A' || input == 'B' || input == 'left' || input == 'right' || input == 'down') {
+            _jump();
           }
-        });
+        }
+      } catch (e) {
+        print('WebSocket受信エラー: $e');
       }
+    }, onError: (error) {
+      print('WebSocketエラー: $error');
     });
   }
 
   @override
   void dispose() {
+    _channel?.sink.close();
     gameTimer?.cancel();
     objectTimer?.cancel();
     super.dispose();
@@ -85,9 +100,17 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
         obj.x -= 4;
       }
 
+      // 取り逃し判定
+      for (var obj in objects) {
+        if (!obj.collected && obj.x < 20) {
+          // 画面左端を超えた未取得オブジェクトがあれば即終了
+          _endGame();
+          return;
+        }
+      }
+
       objects.removeWhere((o) => o.x < -40 || o.collected);
 
- 
       for (var obj in objects) {
         if (!obj.collected && _hitTest(obj)) {
           obj.collected = true;
@@ -158,9 +181,13 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
-              Navigator.of(context).pop();
+              // リダイレクト
+              final url = Uri.parse('https://unity-greendme.web.app/');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
             },
             child: const Text('OK'),
           ),
@@ -220,15 +247,7 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
         onTap: _jump,
         child: Stack(
           children: [
-            // タイマー表示
-            Positioned(
-              top: 20,
-              left: 20,
-              child: Text(
-                '残り: $timeLeft 秒',
-                style: const TextStyle(color: Colors.black, fontSize: 20),
-              ),
-            ),
+            // タイマー表示は削除
             // プレイヤー
             Positioned(
               left: 60,
