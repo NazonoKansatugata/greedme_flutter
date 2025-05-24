@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const int rowCount = 15;
 const int colCount = 10;
@@ -382,6 +383,13 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     timer?.cancel();
     await _saveScoreToFirestore();
     setState(() {});
+    // リダイレクト
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      final url = Uri.parse('https://unity-greendme.web.app/');
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    });
   }
 
   @override
@@ -575,11 +583,6 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
                   Text('ScoreC: $scoreC', style: const TextStyle(fontSize: 18, color: Colors.green)),
                   const SizedBox(height: 8),
                   Text('合計: ${scoreA + scoreB + scoreC}', style: const TextStyle(fontSize: 22)),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: _startGame,
-                    child: const Text('もう一度プレイ'),
-                  ),
                 ],
               ),
             ),

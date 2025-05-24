@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 
 enum EnemyType { typeA, typeB, typeC }
 
@@ -61,7 +62,7 @@ class Enemy {
       case EnemyType.typeA:
         return 90;
       case EnemyType.typeB:
-        return 60;
+        return 20; // 連射速度を上げる（60→20）
       case EnemyType.typeC:
         return 120;
     }
@@ -141,6 +142,7 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
   double screenWidth = 600;
   double screenHeight = 900;
   bool isGameOver = false;
+  int _hitCount = 0; // 被弾回数を追加
 
   Map<EnemyType, int> scores = {
     EnemyType.typeA: 0,
@@ -256,13 +258,45 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         if (enemy.fireCounter >= enemy.fireInterval) {
           enemy.fireCounter = 0;
           // 敵弾発射
-          bullets.add(Bullet(
-            x: enemy.x + enemy.getWidth() / 2 - 3,
-            y: enemy.y + enemy.getHeight(),
-            dy: 6,
-            isPlayer: false,
-            type: 0,
-          ));
+          if (enemy.type == EnemyType.typeA) {
+            // 3方向弾
+            double ex = enemy.x + enemy.getWidth() / 2 - 3;
+            double ey = enemy.y + enemy.getHeight();
+            bullets.add(Bullet(
+              x: ex,
+              y: ey,
+              dy: 6,
+              dx: 0,
+              isPlayer: false,
+              type: 0,
+            ));
+            bullets.add(Bullet(
+              x: ex,
+              y: ey,
+              dy: 6,
+              dx: -2,
+              isPlayer: false,
+              type: 0,
+            ));
+            bullets.add(Bullet(
+              x: ex,
+              y: ey,
+              dy: 6,
+              dx: 2,
+              isPlayer: false,
+              type: 0,
+            ));
+          } else {
+            // 1方向弾
+            bullets.add(Bullet(
+              x: enemy.x + enemy.getWidth() / 2 - 3,
+              y: enemy.y + enemy.getHeight(),
+              dy: 6,
+              dx: 0,
+              isPlayer: false,
+              type: 0,
+            ));
+          }
         }
       }
       enemies.removeWhere((e) => e.y > screenHeight + 40);
@@ -286,15 +320,15 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
       // 敵弾とプレイヤーの当たり判定
       for (var bullet in bullets.where((b) => !b.isPlayer)) {
         if (_playerHitTest(bullet)) {
-          _endGame();
-          return;
+          _onPlayerHit();
+          if (isGameOver) return;
         }
       }
       // 敵本体とプレイヤーの当たり判定
       for (var enemy in enemies) {
         if (_playerHitTestEnemy(enemy)) {
-          _endGame();
-          return;
+          _onPlayerHit();
+          if (isGameOver) return;
         }
       }
 
@@ -353,9 +387,9 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         .collection('users')
         .doc(widget.userId)
         .set({
-      'score_typeA': (scores[EnemyType.typeA] ?? 0) * 2,
-      'score_typeB': (scores[EnemyType.typeB] ?? 0) * 2,
-      'score_typeC': (scores[EnemyType.typeC] ?? 0) * 2,
+      'scoreA': (scores[EnemyType.typeA] ?? 0) * 2,
+      'scoreB': (scores[EnemyType.typeB] ?? 0) * 2,
+      'scoreC': (scores[EnemyType.typeC] ?? 0) * 2,
     }, SetOptions(merge: true));
 
     showDialog(
@@ -375,9 +409,13 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
-              Navigator.of(context).pop();
+              // リダイレクト
+              final url = Uri.parse('https://unity-greendme.web.app/');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
             },
             child: const Text('OK'),
           ),
@@ -424,6 +462,13 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         }
       },
     );
+  }
+
+  void _onPlayerHit() {
+    _hitCount++;
+    if (_hitCount >= 3) {
+      _endGame();
+    }
   }
 
   @override
@@ -496,6 +541,21 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
                     top: e.y,
                     child: e.getWidget(),
                   )),
+                  // 残りライフ表示
+                  Positioned(
+                    left: 20,
+                    top: 20,
+                    child: Row(
+                      children: List.generate(
+                        3,
+                        (i) => Icon(
+                          Icons.favorite,
+                          color: i < (3 - _hitCount) ? Colors.red : Colors.grey,
+                          size: 32,
+                        ),
+                      ),
+                    ),
+                  ),
                   // 操作ボタン
                   if (!isGameOver)
                     Positioned(
