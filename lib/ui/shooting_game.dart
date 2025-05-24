@@ -174,6 +174,20 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
         final msg = jsonDecode(message);
         if (msg['type'] == 'input') {
           final input = msg['data'];
+          // --- ここから加速度対応 ---
+          if (input is Map && input.containsKey('accelY')) {
+            final double accelY = (input['accelY'] as num).toDouble();
+            // yがマイナスなら右、プラスなら左
+            // 絶対値が大きいほど速く動く（係数は調整可）
+            final double speed = accelY.abs() * 2.5; // 係数2.5は調整可
+            if (accelY < -1) {
+              _movePlayer(speed, 0);
+            } else if (accelY > 1) {
+              _movePlayer(-speed, 0);
+            }
+            // -1〜1は静止
+          } else
+          // --- ここまで加速度対応 ---
           if (input == 'left') {
             _movePlayer(-moveStep.toDouble(), 0);
           } else if (input == 'right') {
