@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GreedMe Game Portal',
+      title: 'コミットをためよう！！',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         fontFamily: 'Roboto',
@@ -260,7 +260,7 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8),
                 child: Text(
-                  'ユーザーを選んでゲームを始めよう！',
+                  'ブランチを選んでコミットを始めよう！',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         color: Colors.deepPurple.shade900,
                         fontSize: 22,
