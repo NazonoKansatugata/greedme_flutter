@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const int rowCount = 15;
@@ -367,21 +366,9 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     });
   }
 
-  Future<void> _saveScoreToFirestore() async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .set({
-      'scoreA': scoreA,
-      'scoreB': scoreB,
-      'scoreC': scoreC,
-    }, SetOptions(merge: true));
-  }
-
   void _endGame() async {
     isGameOver = true;
     timer?.cancel();
-    await _saveScoreToFirestore();
     setState(() {});
     // リダイレクト
     Future.delayed(const Duration(milliseconds: 500), () async {
