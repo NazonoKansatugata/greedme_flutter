@@ -118,21 +118,22 @@ class _RhythmGamePageState extends State<RhythmGamePage> {
   }
 
   Future<void> _saveScoreToFirestore() async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .set({
-      'scoreA': scoreA,
-      'scoreB': scoreB,
-      'scoreC': scoreC,
-    }, SetOptions(merge: true));
+    // Firestore保存処理を削除
+    // await FirebaseFirestore.instance
+    //     .collection('users')
+    //     .doc(widget.userId)
+    //     .set({
+    //   'scoreA': scoreA,
+    //   'scoreB': scoreB,
+    //   'scoreC': scoreC,
+    // }, SetOptions(merge: true));
   }
 
   void _endGame() async {
     isGameOver = true;
     timer.cancel();
     gameTimer.cancel();
-    await _saveScoreToFirestore();
+    // await _saveScoreToFirestore(); // 削除
     setState(() {});
     // リダイレクト
     Future.delayed(const Duration(milliseconds: 500), () async {

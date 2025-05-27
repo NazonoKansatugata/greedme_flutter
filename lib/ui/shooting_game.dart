@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
@@ -395,16 +394,6 @@ class _ShootingGamePageState extends State<ShootingGamePage> {
   void _endGame() async {
     isGameOver = true;
     timer?.cancel();
-
-    // スコアを2倍して保存
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .set({
-      'scoreA': (scores[EnemyType.typeA] ?? 0) * 2,
-      'scoreB': (scores[EnemyType.typeB] ?? 0) * 2,
-      'scoreC': (scores[EnemyType.typeC] ?? 0) * 2,
-    }, SetOptions(merge: true));
 
     showDialog(
       context: context,

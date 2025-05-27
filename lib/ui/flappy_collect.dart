@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
@@ -154,15 +153,15 @@ class _FlappyCollectPageState extends State<FlappyCollectPage> {
     gameTimer?.cancel();
     objectTimer?.cancel();
 
-    // Firestoreにスコア保存
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .set({
-      'score_typeA': scores[CollectType.typeA],
-      'score_typeB': scores[CollectType.typeB],
-      'score_typeC': scores[CollectType.typeC],
-    }, SetOptions(merge: true));
+    // Firestoreにスコア保存（削除）
+    // await FirebaseFirestore.instance
+    //     .collection('users')
+    //     .doc(widget.userId)
+    //     .set({
+    //   'score_typeA': scores[CollectType.typeA],
+    //   'score_typeB': scores[CollectType.typeB],
+    //   'score_typeC': scores[CollectType.typeC],
+    // }, SetOptions(merge: true));
 
     showDialog(
       context: context,
