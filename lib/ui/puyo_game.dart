@@ -5,9 +5,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 
-const int rowCount = 12; // 以前は20
+const int rowCount = 12;
 const int colCount = 6;
-const Duration tick = Duration(milliseconds: 400);
+const Duration tick = Duration(milliseconds: 900);
 
 enum PuyoColor { red, green, blue, yellow, purple, orange }
 
@@ -17,7 +17,7 @@ const Map<PuyoColor, Color> puyoColors = {
   PuyoColor.blue: Colors.blue,
   PuyoColor.yellow: Colors.yellow,
   PuyoColor.purple: Colors.purple,
-  PuyoColor.orange: Colors.orange, // シアン→オレンジ
+  PuyoColor.orange: Colors.orange, 
 };
 
 class PuyoPair {
@@ -90,6 +90,9 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
 
   List<PuyoPair> nextPairs = [];
 
+  Timer? accelTimer;
+  double _lastAccelY = 0;
+
   @override
   void initState() {
     super.initState();
@@ -105,13 +108,7 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
           // --- 加速度対応 ---
           if (input is Map && input.containsKey('accelY')) {
             final double accelY = (input['accelY'] as num).toDouble();
-            final double speed = accelY.abs() * 2.5;
-            if (accelY < -1) {
-              _move(speed.round());
-            } else if (accelY > 1) {
-              _move(-speed.round());
-            }
-            // -1〜1は静止
+            _handleAccelY(accelY);
           } else
           // --- 加速度ここまで ---
           if (input == 'left') {
@@ -134,6 +131,24 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
     });
   }
 
+  void _handleAccelY(double accelY) {
+    if (accelTimer != null) {
+      accelTimer!.cancel();
+      accelTimer = null;
+    }
+    if (accelY < -1) {
+      _move(1);
+      accelTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+        if (accelY < -1) _move(1);
+      });
+    } else if (accelY > 1) {
+      _move(-1);
+      accelTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+        if (accelY > 1) _move(-1);
+      });
+    }
+  }
+
   void _startGame() {
     field = List.generate(rowCount, (_) => List.filled(colCount, null));
     score = 0;
@@ -143,7 +158,7 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
     isGameOver = false;
     holdPair = null;
     holdUsed = false;
-    nextPairs = List.generate(1, (_) => _randomPair()); // 1個先だけ
+    nextPairs = List.generate(1, (_) => _randomPair()); 
     _spawnPair();
     timer = Timer.periodic(tick, (_) => _tick());
   }
@@ -332,6 +347,7 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
   void dispose() {
     _channel?.sink.close();
     timer?.cancel();
+    accelTimer?.cancel();
     super.dispose();
   }
 

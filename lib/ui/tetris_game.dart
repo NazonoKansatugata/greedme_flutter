@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const int rowCount = 15;
 const int colCount = 10;
-const Duration tick = Duration(milliseconds: 400);
+const Duration tick = Duration(milliseconds: 900); // 落下速度をかなり遅めに
 
 enum BlockType { I, O, T, S, Z, J, L }
 
@@ -174,12 +174,15 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
   int scoreB = 0;
   int scoreC = 0;
 
+  // 加速度関連
+  Timer? accelTimer;
+  double _lastAccelY = 0;
+
   @override
   void initState() {
     super.initState();
     _startGame();
 
-    // WebSocket接続
     _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
     _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': widget.userId}));
     _channel!.stream.listen((message) {
@@ -190,13 +193,7 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
           // --- 加速度対応 ---
           if (input is Map && input.containsKey('accelY')) {
             final double accelY = (input['accelY'] as num).toDouble();
-            final double speed = accelY.abs() * 2.5;
-            if (accelY < -1) {
-              _move(speed.round());
-            } else if (accelY > 1) {
-              _move(-speed.round());
-            }
-            // -1〜1は静止
+            _handleAccelY(accelY);
           } else
           // --- 加速度ここまで ---
           if (input == 'left') {
@@ -219,6 +216,26 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
     }, onError: (error) {
       print('WebSocketエラー: $error');
     });
+  }
+
+  void _handleAccelY(double accelY) {
+    // シューティングと同じく傾きが一定以上のときだけ連続移動
+    if (accelTimer != null) {
+      accelTimer!.cancel();
+      accelTimer = null;
+    }
+    if (accelY < -1) {
+      _move(1);
+      accelTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+        if (accelY < -1) _move(1);
+      });
+    } else if (accelY > 1) {
+      _move(-1);
+      accelTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+        if (accelY > 1) _move(-1);
+      });
+    }
+    // -1〜1は静止
   }
 
   void _startGame() {
@@ -393,6 +410,7 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
   void dispose() {
     _channel?.sink.close();
     timer?.cancel();
+    accelTimer?.cancel();
     super.dispose();
   }
 
