@@ -181,14 +181,24 @@ class _TetrisGamePageState extends State<TetrisGamePage> {
 
     // WebSocket接続
     _channel = WebSocketChannel.connect(Uri.parse('wss://greendme-websocket.onrender.com'));
-    // ゲーム画面として登録
     _channel!.sink.add(jsonEncode({'type': 'register', 'role': 'game', 'userId': widget.userId}));
     _channel!.stream.listen((message) {
       try {
         final msg = jsonDecode(message);
         if (msg['type'] == 'input') {
           final input = msg['data'];
-          // コントローラーからの指示に応じて操作
+          // --- 加速度対応 ---
+          if (input is Map && input.containsKey('accelY')) {
+            final double accelY = (input['accelY'] as num).toDouble();
+            final double speed = accelY.abs() * 2.5;
+            if (accelY < -1) {
+              _move(speed.round());
+            } else if (accelY > 1) {
+              _move(-speed.round());
+            }
+            // -1〜1は静止
+          } else
+          // --- 加速度ここまで ---
           if (input == 'left') {
             _move(-1);
           } else if (input == 'right') {

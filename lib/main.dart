@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:math';
 import 'ui/shooting_game.dart';
-import 'ui/flappy_collect.dart';
 import 'ui/tetris_game.dart';
 import 'ui/puyo_game.dart';
-import 'ui/rhythm_game.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
@@ -56,7 +54,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // ユーザーリスト取得
   Stream<QuerySnapshot<Map<String, dynamic>>> get _usersStream =>
       FirebaseFirestore.instance.collection('users').snapshots();
 
@@ -77,13 +74,45 @@ class _MyHomePageState extends State<MyHomePage> {
     onOk();
   }
 
-  void _startGame(String userId) async {
-    final rand = Random();
-    final gameType = rand.nextInt(5); // 0:shooting, 1:flappy, 2:tetris, 3:puyo, 4:rhythm
+  // ゲーム選択ダイアログ
+  Future<void> _showGameSelectDialog(BuildContext context, String userId) async {
+    await showDialog(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('ゲームを選択してください'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(context);
+              _startGame(userId, 'shooting');
+            },
+            child: const Text('シューティングゲーム'),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(context);
+              _startGame(userId, 'tetris');
+            },
+            child: const Text('テトリス風ゲーム'),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(context);
+              _startGame(userId, 'puyo');
+            },
+            child: const Text('ぷよぷよ風ゲーム'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 選択式に変更
+  void _startGame(String userId, String gameType) async {
     Widget gameWidget;
     String howToTitle = '';
     String howToDesc = '';
-    if (gameType == 0) {
+    if (gameType == 'shooting') {
       gameWidget = ShootingGamePage(userId: userId);
       howToTitle = 'シューティングゲームの遊び方';
       howToDesc = '''
@@ -92,15 +121,7 @@ Aボタンで弾の種類（速射1方向/遅射3方向）を切り替えます�
 Bボタンで移動速度（遅い/普通/速い）を切り替えます。
 敵や敵弾に当たるとゲーム終了。撃破数がスコアです。
 ''';
-    } else if (gameType == 1) {
-      gameWidget = FlappyCollectPage(userId: userId);
-      howToTitle = 'フラッピーバード風ゲームの遊び方';
-      howToDesc = '''
-画面タップまたはジャンプボタンで上昇します。
-3種類のオブジェクトを取ってスコアを稼ごう！
-30秒間の勝負です。
-''';
-    } else if (gameType == 2) {
+    } else if (gameType == 'tetris') {
       gameWidget = TetrisGamePage(userId: userId);
       howToTitle = 'テトリス風ゲームの遊び方';
       howToDesc = '''
@@ -108,7 +129,7 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
 ↓でソフトドロップ、↑でハードドロップ。
 1ライン消去ごとに含まれるミノの種類ごとにスコアA/B/Cに加算されます。
 ''';
-    } else if (gameType == 3) {
+    } else if (gameType == 'puyo') {
       gameWidget = PuyoGamePage(userId: userId);
       howToTitle = 'ぷよぷよ風ゲームの遊び方';
       howToDesc = '''
@@ -119,12 +140,14 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
 連鎖するとスコア倍率アップ！
 ''';
     } else {
-      gameWidget = RhythmGamePage(userId: userId);
-      howToTitle = 'リズムゲームの遊び方';
+      // デフォルトはシューティング
+      gameWidget = ShootingGamePage(userId: userId);
+      howToTitle = 'シューティングゲームの遊び方';
       howToDesc = '''
-画面下部またはコントローラーの上・下・右・左・A・Bボタンに対応したノーツが判定ラインに重なったタイミングで押しましょう。
-上・下でScoreA、右・左でScoreB、A・BでScoreCに加算されます。
-30秒間のスコアを競います。
+左右・上下ボタンまたは←→↑↓キーで移動します。
+Aボタンで弾の種類（速射1方向/遅射3方向）を切り替えます。
+Bボタンで移動速度（遅い/普通/速い）を切り替えます。
+敵や敵弾に当たるとゲーム終了。撃破数がスコアです。
 ''';
     }
     await _showHowToPlayDialog(context, howToTitle, howToDesc, () {
@@ -133,8 +156,8 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
         MaterialPageRoute(
           builder: (context) => Center(
             child: SizedBox(
-              width: 600, // パソコン向けに幅を広げる
-              height: 900, // パソコン向けに高さを広げる
+              width: 600,
+              height: 900,
               child: gameWidget,
             ),
           ),
@@ -153,7 +176,7 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
           title: const Text('合言葉を入力してください'),
           content: TextField(
             autofocus: true,
-            obscureText: false, // ここをfalseに
+            obscureText: false,
             decoration: const InputDecoration(hintText: '合言葉'),
             onChanged: (value) => temp = value,
             onSubmitted: (value) => Navigator.pop(context, value),
@@ -169,7 +192,7 @@ Bボタンで移動速度（遅い/普通/速い）を切り替えます。
     );
     if (inputPassword == null) return;
     if (inputPassword == password) {
-      _startGame(doc.id);
+      await _showGameSelectDialog(context, doc.id);
     } else {
       showDialog(
         context: context,

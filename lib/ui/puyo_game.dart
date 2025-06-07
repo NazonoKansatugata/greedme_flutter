@@ -102,6 +102,18 @@ class _PuyoGamePageState extends State<PuyoGamePage> {
         final msg = jsonDecode(message);
         if (msg['type'] == 'input') {
           final input = msg['data'];
+          // --- 加速度対応 ---
+          if (input is Map && input.containsKey('accelY')) {
+            final double accelY = (input['accelY'] as num).toDouble();
+            final double speed = accelY.abs() * 2.5;
+            if (accelY < -1) {
+              _move(speed.round());
+            } else if (accelY > 1) {
+              _move(-speed.round());
+            }
+            // -1〜1は静止
+          } else
+          // --- 加速度ここまで ---
           if (input == 'left') {
             _move(-1);
           } else if (input == 'right') {
